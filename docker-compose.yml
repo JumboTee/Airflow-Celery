@@ -1,0 +1,75 @@
+version: '3.8'
+services:
+  redis:
+    image: redis:${REDIS_TAG}
+    
+  postgres:
+    image: postgres:${POSTGRES_TAG}
+    env_file:
+      - airflow.env.txt
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data/pgdata
+    ports:
+      - 5433:5432
+
+  init_db:
+    image: apache/airflow:${AIRFLOW_TAG}
+    command: upgradedb 
+    env_file:
+      - airflow.env.txt
+    depends_on:
+      - postgres
+
+  scheduler:
+    image: apache/airflow:${AIRFLOW_TAG}
+    restart: always
+    command: scheduler
+    env_file:
+      - airflow.env.txt
+    depends_on:
+      - webserver
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+
+  webserver:
+    image: apache/airflow:${AIRFLOW_TAG}
+    restart: always
+    command: webserver
+    env_file:
+      - airflow.env.txt
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - 8080:8080
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /opt/airflow/airflow-webserver.pid ]"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  worker:
+    image: apache/airflow:${AIRFLOW_TAG}
+    restart: always
+    command: worker
+    depends_on:
+        - scheduler
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+    env_file:
+      - airflow.env.txt
+        
+  flower:
+    image: apache/airflow:${AIRFLOW_TAG}
+    restart: always
+    command: flower
+    depends_on:
+      - redis
+    env_file:
+      - airflow.env.txt
+    ports:
+      - 5555:5555
